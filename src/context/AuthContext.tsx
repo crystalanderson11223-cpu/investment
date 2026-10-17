@@ -11,8 +11,6 @@ import { auth, db } from '../lib/firebase';
 
 export const ADMIN_EMAIL = 'crystalanderson11223@gmail.com';
 export const MAX_CLIENT_USERS = 3;
-const LOCAL_SESSION_KEY = 'aurum_local_auth_session';
-const LOCAL_USERS_KEY = 'aurum_registered_users_list';
 
 export interface UserProfile {
   uid: string;
@@ -23,6 +21,7 @@ export interface UserProfile {
   balanceBtc?: number;
   status?: 'active' | 'suspended' | 'verified';
   createdAt: string;
+  password?: string;
 }
 
 interface AuthContextType {
@@ -41,30 +40,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Initial sample users if none exist yet, ensuring admin can immediately test balance editing
-const DEFAULT_SAMPLE_USERS: UserProfile[] = [
-  {
-    uid: 'usr-client-01',
-    email: 'marcus.vance@investor.com',
-    username: 'marcus.vance',
-    role: 'user',
-    balanceUsd: 15400,
-    balanceBtc: 0.165,
-    status: 'active',
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    uid: 'usr-client-02',
-    email: 'elena.rostova@capgroup.io',
-    username: 'elena.rostova',
-    role: 'user',
-    balanceUsd: 5200,
-    balanceBtc: 0.055,
-    status: 'verified',
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -85,40 +60,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return trimmed;
   };
 
-  const getLocalUsers = (): UserProfile[] => {
-    try {
-      const saved = localStorage.getItem(LOCAL_USERS_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch {
-      // ignore
-    }
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(DEFAULT_SAMPLE_USERS));
-    return DEFAULT_SAMPLE_USERS;
-  };
-
-  const saveLocalUsers = (usersList: UserProfile[]) => {
-    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(usersList));
-  };
-
   const checkUserLimit = async (): Promise<boolean> => {
     try {
       const q = query(collection(db, 'users'), where('role', '==', 'user'));
       const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        return snapshot.size < MAX_CLIENT_USERS;
-      }
+      return snapshot.size < MAX_CLIENT_USERS;
     } catch {
-      // ignore Firestore errors and check local
+      return true;
     }
-    const locals = getLocalUsers().filter((u) => u.role === 'user');
-    return locals.length < MAX_CLIENT_USERS;
   };
 
   const fetchOrCreateProfile = async (
     user: { uid: string; email?: string | null },
-    customRole?: 'admin' | 'user'
+    customRole?: 'admin' | 'user',
+    extraData?: Partial<UserProfile>
   ): Promise<UserProfile> => {
     const userEmail = user.email || '';
     const isSystemAdmin =
@@ -129,12 +84,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const defaultProf: UserProfile = {
       uid: user.uid,
       email: userEmail || (isSystemAdmin ? ADMIN_EMAIL : 'client@aurum.internal'),
-      username: userEmail.split('@')[0],
+      username: userEmail.split('@')[0] || 'client',
       role: isSystemAdmin ? 'admin' : 'user',
       balanceUsd: isSystemAdmin ? 250000 : 0,
       balanceBtc: isSystemAdmin ? 2.68 : 0,
       status: 'active',
       createdAt: new Date().toISOString(),
+      ...extraData,
     };
 
     try {
@@ -160,26 +116,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return defaultProf;
       }
     } catch {
-      // Local fallback
       return defaultProf;
     }
   };
 
   useEffect(() => {
-    // 1. Check local session first
-    const savedLocal = localStorage.getItem(LOCAL_SESSION_KEY);
-    if (savedLocal) {
-      try {
-        const parsed = JSON.parse(savedLocal);
-        setCurrentUser(parsed);
-        setProfile(parsed);
-        setLoading(false);
-      } catch {
-        // ignore
-      }
-    }
-
-    // 2. Listen to Firebase auth state
+    // Listen to Firebase auth state
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
@@ -189,7 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {
           // ignore
         }
-      } else if (!savedLocal) {
+      } else {
         setCurrentUser(null);
         setProfile(null);
       }
@@ -208,9 +150,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       trimmedId === ADMIN_EMAIL.toLowerCase() ||
       trimmedId.startsWith('admin@');
 
-    // 1. Direct Administrator Login (User requested "login with email and password as admin", no @ required)
+    // 1. Direct Administrator Login
     if (isExplicitAdmin) {
-      // Admin authentication is always accepted for designated credentials
       const adminProf: UserProfile = {
         uid: 'admin-system-uid',
         email: ADMIN_EMAIL,
@@ -222,12 +163,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: new Date().toISOString(),
       };
 
-      // Set state and persist in local storage
-      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(adminProf));
       setCurrentUser(adminProf);
       setProfile(adminProf);
 
-      // Also sync to Firestore in background without blocking
       try {
         await setDoc(doc(db, 'users', adminProf.uid), adminProf, { merge: true });
         await setDoc(doc(db, 'admins', adminProf.uid), { uid: adminProf.uid, email: adminProf.email }, { merge: true });
@@ -237,45 +175,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // 2. Regular Client User Login
+    // 2. Regular Client User Login (100% Firebase/Firestore)
     const emailToUse = resolveEmail(identifier);
 
     try {
-      // Try Firebase Auth if password meets 6 character requirement
       if (pass.length >= 6) {
         try {
           const cred = await signInWithEmailAndPassword(auth, emailToUse, pass);
           const prof = await fetchOrCreateProfile(cred.user);
           setProfile(prof);
           setCurrentUser(cred.user);
-          localStorage.removeItem(LOCAL_SESSION_KEY);
           return;
-        } catch (fbErr: any) {
-          // Fall through to local fallback if operation-not-allowed or user-not-found
-          if (
-            fbErr.code !== 'auth/operation-not-allowed' &&
-            fbErr.code !== 'auth/invalid-credential' &&
-            fbErr.code !== 'auth/user-not-found'
-          ) {
-            throw fbErr;
-          }
+        } catch {
+          // Fall through to Firestore collection lookup
         }
       }
 
-      // Check local user database fallback
-      const localUsers = getLocalUsers();
-      const existing = localUsers.find(
-        (u) => u.email.toLowerCase() === emailToUse.toLowerCase() || u.username === identifier
-      );
+      // Query Firestore users collection for matching email or username
+      const usersSnap = await getDocs(collection(db, 'users'));
+      let foundUser: UserProfile | null = null;
+      usersSnap.forEach((d) => {
+        const u = d.data() as UserProfile;
+        if (
+          u.email.toLowerCase() === emailToUse.toLowerCase() ||
+          u.username?.toLowerCase() === identifier.trim().toLowerCase()
+        ) {
+          foundUser = u;
+        }
+      });
 
-      if (existing) {
-        localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(existing));
-        setCurrentUser(existing);
-        setProfile(existing);
+      if (foundUser) {
+        const typedUser = foundUser as UserProfile;
+        if (typedUser.password && typedUser.password !== pass && pass.length >= 6) {
+          throw new Error('Invalid password.');
+        }
+        setCurrentUser({ uid: typedUser.uid, email: typedUser.email });
+        setProfile(typedUser);
         return;
       }
 
-      // If user not found and password valid, check if we can auto-log in or report error
       throw new Error('Account not found. Please click Sign Up to register.');
     } catch (err: any) {
       const msg = err.message || 'Login failed. Please check credentials.';
@@ -314,49 +252,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       balanceBtc: 0,
       status: 'active',
       createdAt: new Date().toISOString(),
+      password: pass,
     };
 
-    // 1. Try Firebase Auth if password is at least 6 characters
     let firebaseSuccess = false;
     if (pass.length >= 6) {
       try {
         const cred = await createUserWithEmailAndPassword(auth, emailToUse, pass);
-        const prof = await fetchOrCreateProfile(cred.user, 'user');
+        const prof = await fetchOrCreateProfile(cred.user, 'user', { password: pass });
         setProfile(prof);
         setCurrentUser(cred.user);
-        localStorage.removeItem(LOCAL_SESSION_KEY);
         firebaseSuccess = true;
       } catch (fbErr: any) {
         if (fbErr.code === 'auth/email-already-in-use') {
           throw new Error('An account with this email already exists. Please sign in.');
         }
-        // Operation-not-allowed or network error falls back to local
       }
+    }
+
+    // Always save/sync to Firestore users collection
+    try {
+      await setDoc(doc(db, 'users', newProfile.uid), newProfile);
+    } catch (e) {
+      console.warn('Firestore user save error:', e);
     }
 
     if (!firebaseSuccess) {
-      // 2. Local fallback registration
-      const localUsers = getLocalUsers();
-      if (localUsers.length >= MAX_CLIENT_USERS + 2) {
-        throw new Error('Registration limit reached (Maximum 3 client accounts permitted).');
-      }
-      saveLocalUsers([...localUsers, newProfile]);
-      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(newProfile));
-      setCurrentUser(newProfile);
+      setCurrentUser({ uid: newProfile.uid, email: newProfile.email });
       setProfile(newProfile);
-    }
-
-    // Sync to Firestore
-    try {
-      await setDoc(doc(db, 'users', newProfile.uid), newProfile, { merge: true });
-    } catch {
-      // ignore
     }
   };
 
   const logout = async () => {
     setError(null);
-    localStorage.removeItem(LOCAL_SESSION_KEY);
     try {
       await signOut(auth);
     } catch {
@@ -367,40 +295,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUserByAdmin = async (uid: string, updates: Partial<UserProfile>) => {
-    // 1. Update in local storage
-    const localUsers = getLocalUsers();
-    const updatedLocals = localUsers.map((u) => (u.uid === uid ? { ...u, ...updates } : u));
-    saveLocalUsers(updatedLocals);
-
-    // If updating current logged in user
     if (currentUser?.uid === uid) {
-      const merged = { ...profile, ...updates } as UserProfile;
-      setProfile(merged);
-      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(merged));
+      setProfile((prev) => (prev ? { ...prev, ...updates } : null));
     }
 
-    // 2. Update in Firestore
     try {
       const ref = doc(db, 'users', uid);
       await updateDoc(ref, updates);
     } catch (e) {
-      console.warn('Firestore update error (saved locally):', e);
+      console.warn('Firestore update error:', e);
     }
   };
 
   const deleteUserByAdmin = async (uid: string) => {
     setError(null);
-    // 1. Remove from local storage registered users list
-    const localUsers = getLocalUsers();
-    const filtered = localUsers.filter((u) => u.uid !== uid);
-    saveLocalUsers(filtered);
-
-    // If current user or profile matches deleted uid, log out
     if (currentUser?.uid === uid || profile?.uid === uid) {
       await logout();
     }
 
-    // 2. Delete document from Firestore users collection
     try {
       await deleteDoc(doc(db, 'users', uid));
     } catch (e) {
@@ -411,12 +323,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getAllClientUsers = async (): Promise<UserProfile[]> => {
     const listMap = new Map<string, UserProfile>();
 
-    // 1. Load from local first
-    getLocalUsers().forEach((u) => {
-      if (u.role === 'user') listMap.set(u.uid, u);
-    });
-
-    // 2. Load from Firestore
     try {
       const q = query(collection(db, 'users'));
       const snap = await getDocs(q);
@@ -426,8 +332,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           listMap.set(d.id, data);
         }
       });
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn('Firestore fetch users error:', e);
     }
 
     return Array.from(listMap.values()).slice(0, MAX_CLIENT_USERS);
