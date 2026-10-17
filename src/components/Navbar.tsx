@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { Wallet, Layers, Menu, X, ArrowUpRight } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Wallet, Layers, Menu, X, LogIn, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   activeCount: number;
   onOpenPortfolio: () => void;
   onSelectPackageScroll: () => void;
+  onOpenAuth: (mode?: 'login' | 'signup') => void;
+  onOpenAdmin?: () => void;
   btcPrice: number;
 }
 
@@ -12,68 +15,108 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeCount,
   onOpenPortfolio,
   onSelectPackageScroll,
+  onOpenAuth,
+  onOpenAdmin,
   btcPrice,
 }) => {
+  const { currentUser, isAdmin, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/95 backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 py-3 sm:py-4">
           {/* Zone 1: Brand title wordmark */}
           <a
             href="#"
-            className="group flex items-center gap-2.5 text-base sm:text-lg font-bold tracking-tight text-white whitespace-nowrap shrink-0 min-h-[44px]"
+            className="group flex items-center gap-2.5 text-base sm:text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 min-h-[44px]"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 shadow-sm shadow-amber-500/20">
-              <span className="font-mono text-sm font-black">A</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 text-slate-950 shadow-sm shadow-amber-500/20">
+              <span className="font-mono text-sm font-black">N</span>
             </div>
-            <span>Aurum Capital</span>
+            <span>New Investment Company</span>
           </a>
 
-          {/* Zone 2: Desktop clean single-line navigation links */}
-          <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-400">
+          {/* Zone 2: Navigation Links */}
+          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
             <button
               onClick={onSelectPackageScroll}
-              className="hover:text-slate-100 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer py-2"
+              className="hover:text-slate-900 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer py-2"
             >
-              <Layers className="h-4 w-4 text-slate-500" />
+              <Layers className="h-4 w-4 text-slate-400" />
               <span>Investment Plans</span>
             </button>
             <button
               onClick={onOpenPortfolio}
-              className="hover:text-amber-400 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer py-2"
+              className="hover:text-amber-600 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer py-2"
             >
-              <Wallet className="h-4 w-4 text-slate-500" />
+              <Wallet className="h-4 w-4 text-slate-400" />
               <span>Portfolio</span>
               {activeCount > 0 && (
-                <span className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 tabular-nums">
+                <span className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 tabular-nums">
                   {activeCount}
                 </span>
               )}
             </button>
           </nav>
 
-          {/* Zone 3: 1 primary action + Mobile toggles */}
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          {/* Zone 3: Actions & Auth */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Live BTC Price Badge */}
-            <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-400 font-mono tabular-nums border border-slate-800 bg-slate-900/80 px-2 sm:px-3 py-1.5 rounded-lg min-h-[36px]">
-              <span className="text-amber-400 font-semibold">BTC</span>
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-600 font-mono tabular-nums border border-slate-200 bg-slate-50 px-2.5 py-1.5 rounded-lg min-h-[36px]">
+              <span className="text-amber-600 font-semibold">BTC</span>
               <span>${btcPrice.toLocaleString()}</span>
             </div>
 
-            {/* Primary Action Button (Desktop) */}
-            <button
-              onClick={activeCount > 0 ? onOpenPortfolio : onSelectPackageScroll}
-              className="hidden sm:flex px-4 py-2 text-xs font-semibold text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 rounded-lg hover:from-amber-300 hover:to-amber-400 transition-all shadow-sm shadow-amber-500/20 whitespace-nowrap shrink-0 cursor-pointer active:scale-95 min-h-[44px] items-center"
-            >
-              {activeCount > 0 ? `Portfolio (${activeCount})` : 'Start Investing'}
-            </button>
+            {/* User Auth Info */}
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (isAdmin && onOpenAdmin) {
+                      onOpenAdmin();
+                    }
+                  }}
+                  className={`text-xs font-mono truncate max-w-[140px] px-2 py-1 rounded transition-colors ${
+                    isAdmin
+                      ? 'text-slate-700 hover:text-amber-700 hover:bg-amber-50 cursor-pointer'
+                      : 'text-slate-600 cursor-default'
+                  }`}
+                  title={isAdmin ? 'Administrator Profile' : 'Current User'}
+                >
+                  {currentUser.email}
+                </button>
+                <button
+                  onClick={() => logout()}
+                  className="px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1 min-h-[36px]"
+                  title="Sign Out"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => onOpenAuth('login')}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer min-h-[36px] flex items-center gap-1"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  <span>Sign In</span>
+                </button>
+                <button
+                  onClick={() => onOpenAuth('signup')}
+                  className="hidden sm:flex px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors cursor-pointer min-h-[36px] items-center shadow-sm"
+                >
+                  Sign Up
+                </button>
+              </div>
+            )}
 
             {/* Mobile Hamburger Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden flex h-11 w-11 items-center justify-center rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900 transition-colors cursor-pointer"
+              className="md:hidden flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
               aria-label="Toggle Navigation Menu"
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -81,21 +124,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Mobile Navigation Dropdown Drawer */}
+        {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-slate-800/80 bg-slate-950/98 px-4 py-4 space-y-2">
+          <div className="md:hidden border-t border-slate-200 bg-white px-4 py-3 space-y-2 shadow-lg">
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
                 onSelectPackageScroll();
               }}
-              className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-900/50 hover:bg-slate-900 text-white text-sm font-semibold cursor-pointer min-h-[48px]"
+              className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-50 text-slate-900 text-xs font-semibold"
             >
-              <div className="flex items-center gap-3">
-                <Layers className="h-5 w-5 text-amber-400" />
+              <div className="flex items-center gap-2.5">
+                <Layers className="h-4 w-4 text-amber-500" />
                 <span>Investment Packages</span>
               </div>
-              <ArrowUpRight className="h-4 w-4 text-slate-500" />
             </button>
 
             <button
@@ -103,33 +145,64 @@ export const Navbar: React.FC<NavbarProps> = ({
                 setMobileMenuOpen(false);
                 onOpenPortfolio();
               }}
-              className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-900/50 hover:bg-slate-900 text-white text-sm font-semibold cursor-pointer min-h-[48px]"
+              className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-50 text-slate-900 text-xs font-semibold"
             >
-              <div className="flex items-center gap-3">
-                <Wallet className="h-5 w-5 text-amber-400" />
-                <span>Active Portfolio</span>
+              <div className="flex items-center gap-2.5">
+                <Wallet className="h-4 w-4 text-amber-500" />
+                <span>Portfolio</span>
               </div>
-              <div className="flex items-center gap-2">
-                {activeCount > 0 && (
-                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-amber-400 text-slate-950">
-                    {activeCount} Active
-                  </span>
-                )}
-                <ArrowUpRight className="h-4 w-4 text-slate-500" />
-              </div>
+              {activeCount > 0 && (
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-bold">
+                  {activeCount}
+                </span>
+              )}
             </button>
 
-            <div className="pt-2">
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onSelectPackageScroll();
-                }}
-                className="w-full py-3.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider text-slate-950 bg-amber-400 hover:bg-amber-300 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md min-h-[48px]"
-              >
-                <span>Choose Investment Package</span>
-              </button>
-            </div>
+            {!currentUser ? (
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('login');
+                  }}
+                  className="py-2.5 rounded-lg bg-slate-100 text-slate-800 text-xs font-semibold border border-slate-200"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('signup');
+                  }}
+                  className="py-2.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-bold shadow-sm"
+                >
+                  Sign Up
+                </button>
+              </div>
+            ) : (
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                <button
+                  onClick={() => {
+                    if (isAdmin && onOpenAdmin) {
+                      setMobileMenuOpen(false);
+                      onOpenAdmin();
+                    }
+                  }}
+                  className="text-slate-600 font-mono truncate max-w-[200px] text-left"
+                >
+                  {currentUser.email}
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    logout();
+                  }}
+                  className="text-red-600 font-semibold cursor-pointer"
+                >
+                  Log Out
+                </button>
+              </div>
+            )}
           </div>
         )}
       </header>

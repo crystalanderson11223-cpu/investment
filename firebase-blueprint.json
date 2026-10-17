@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered platform user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Designated administrator identity",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "DepositRequest": {
+      "title": "DepositRequest",
+      "description": "User submitted Bitcoin deposit proof for manual verification",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "packageId": { "type": "string" },
+        "packageName": { "type": "string" },
+        "amountUsd": { "type": "number" },
+        "amountBtc": { "type": "string" },
+        "txHash": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "submittedAt": { "type": "number" },
+        "reviewedAt": { "type": "number" }
+      },
+      "required": ["orderId", "userId", "userEmail", "packageId", "packageName", "amountUsd", "amountBtc", "status", "submittedAt"]
+    },
+    "ActiveInvestment": {
+      "title": "ActiveInvestment",
+      "description": "Verified active investment position approved by administrator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "packageId": { "type": "string" },
+        "packageName": { "type": "string" },
+        "investedUsd": { "type": "number" },
+        "investedBtc": { "type": "string" },
+        "apyPercent": { "type": "number" },
+        "termDays": { "type": "number" },
+        "startDate": { "type": "number" },
+        "endDate": { "type": "number" },
+        "txHash": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "completed"] }
+      },
+      "required": ["id", "userId", "packageId", "packageName", "investedUsd", "investedBtc", "apyPercent", "termDays", "startDate", "endDate", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile records"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Admin roles"
+    },
+    "/deposit_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/DepositRequest" },
+      "description": "Pending and reviewed Bitcoin deposit verification requests"
+    },
+    "/active_investments/{investmentId}": {
+      "schema": { "$ref": "#/entities/ActiveInvestment" },
+      "description": "Approved and verified active investments"
+    }
+  }
+}

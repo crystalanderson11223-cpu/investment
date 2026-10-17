@@ -87,7 +87,7 @@ export const INVESTMENT_PACKAGES: InvestmentPackage[] = [
   },
 ];
 
-// Default company Bitcoin receiving address (Native SegWit)
+// Default company Bitcoin receiving address
 export const DEFAULT_BTC_ADDRESS = 'bc1q8w7h7e4vupk7j5x9a2mn07w3k4g8u67v9pl0qa';
 
 // Fallback BTC/USD reference price

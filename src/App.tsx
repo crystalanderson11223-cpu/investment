@@ -7,19 +7,31 @@ import React, { useState, useEffect } from 'react';
 import { INVESTMENT_PACKAGES, DEFAULT_BTC_PRICE } from './data/packages';
 import { InvestmentPackage, ActiveInvestment } from './types/investment';
 import { fetchLiveBtcPrice, getSavedInvestments } from './utils/bitcoin';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
+import { MarketOverview } from './components/MarketOverview';
+import { HowItWorks } from './components/HowItWorks';
+import { BitcoinPriceChart } from './components/BitcoinPriceChart';
 import { PackagesSection } from './components/PackagesSection';
 import { Footer } from './components/Footer';
 import { BitcoinCheckoutModal } from './components/BitcoinCheckoutModal';
 import { PortfolioModal } from './components/PortfolioModal';
+import { AuthModal } from './components/AuthModal';
+import { AdminDashboardModal } from './components/AdminDashboardModal';
 import { Wallet, ArrowRight } from 'lucide-react';
+import { doc, getDocFromServer } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
-export default function App() {
+function MainApp() {
+  const { currentUser, isAdmin } = useAuth();
   const [btcPrice, setBtcPrice] = useState<number>(DEFAULT_BTC_PRICE);
   const [activeInvestments, setActiveInvestments] = useState<ActiveInvestment[]>([]);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState<boolean>(false);
   const [portfolioModalOpen, setPortfolioModalOpen] = useState<boolean>(false);
+  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+  const [authDefaultMode, setAuthDefaultMode] = useState<'login' | 'signup'>('login');
+  const [adminModalOpen, setAdminModalOpen] = useState<boolean>(false);
   const [selectedPackage, setSelectedPackage] = useState<InvestmentPackage>(
     INVESTMENT_PACKAGES[0]
   );
@@ -27,7 +39,19 @@ export default function App() {
     INVESTMENT_PACKAGES[0].defaultAmount
   );
 
-  // Fetch live BTC price and load saved investments
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.warn('Firestore offline or connecting...');
+        }
+      }
+    }
+    testConnection();
+  }, []);
+
   useEffect(() => {
     setActiveInvestments(getSavedInvestments());
 
@@ -37,7 +61,7 @@ export default function App() {
     };
 
     updatePrice();
-    const interval = setInterval(updatePrice, 60000);
+    const interval = setInterval(updatePrice, 30000); // refresh every 30s
     return () => clearInterval(interval);
   }, []);
 
@@ -48,54 +72,74 @@ export default function App() {
     }
   };
 
-  // Handler when user selects a package
   const handleSelectPackage = (pkg: InvestmentPackage) => {
     setSelectedPackage(pkg);
     setDepositAmountUsd(pkg.defaultAmount);
     setCheckoutModalOpen(true);
   };
 
-  // Handler when an investment completes
   const handleInvestmentSuccess = (newInv: ActiveInvestment) => {
     setActiveInvestments((prev) => [newInv, ...prev]);
   };
 
+  const handleOpenAuth = (mode: 'login' | 'signup' = 'login') => {
+    setAuthDefaultMode(mode);
+    setAuthModalOpen(true);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500/20 selection:text-amber-200 pb-16 sm:pb-0">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-amber-500/20 selection:text-amber-900 pb-16 sm:pb-0">
       {/* Top Bar */}
       <Navbar
         activeCount={activeInvestments.length}
         onOpenPortfolio={() => setPortfolioModalOpen(true)}
         onSelectPackageScroll={scrollToPackages}
+        onOpenAuth={handleOpenAuth}
+        onOpenAdmin={() => setAdminModalOpen(true)}
         btcPrice={btcPrice}
       />
 
       {/* Main Content */}
       <main className="flex-1">
-        {/* Simple Page Header */}
+        {/* Introductory Overview Header */}
         <Hero
           onOpenPortfolio={() => setPortfolioModalOpen(true)}
           activeCount={activeInvestments.length}
         />
 
-        {/* Plain Packages Grid */}
+        {/* If user is NOT logged in: show the market context, how it works, and price chart */}
+        {!currentUser && (
+          <>
+            {/* Live Market Index */}
+            <MarketOverview />
+
+            {/* How It Works */}
+            <HowItWorks />
+
+            {/* Bitcoin Price Chart (placed directly before investment packages) */}
+            <BitcoinPriceChart currentBtcPrice={btcPrice} />
+          </>
+        )}
+
+        {/* Packages Grid: always shown (shows locked prompt if logged out; full packages if logged in) */}
         <PackagesSection
           packages={INVESTMENT_PACKAGES}
           onSelectPackage={handleSelectPackage}
+          onRequireAuth={handleOpenAuth}
         />
       </main>
 
       {/* Minimal Footer */}
       <Footer />
 
-      {/* Mobile Bottom Quick Bar */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-30 p-2.5 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 flex items-center justify-between gap-2.5">
+      {/* Mobile Bottom Bar */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-30 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-between gap-2 shadow-lg">
         <button
           onClick={() => setPortfolioModalOpen(true)}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs font-semibold cursor-pointer min-h-[44px]"
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-xs font-semibold cursor-pointer min-h-[44px]"
         >
-          <Wallet className="h-4 w-4 text-amber-400" />
-          <span>My Investments</span>
+          <Wallet className="h-4 w-4 text-amber-500" />
+          <span>Portfolio</span>
           {activeInvestments.length > 0 && (
             <span className="font-mono text-[11px] font-bold px-1.5 rounded bg-amber-400 text-slate-950">
               {activeInvestments.length}
@@ -105,14 +149,14 @@ export default function App() {
 
         <button
           onClick={scrollToPackages}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold uppercase tracking-wider cursor-pointer min-h-[44px]"
+          className="flex-1 flex items-center justify-center gap-1 py-2.5 px-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold uppercase tracking-wider cursor-pointer shadow-sm min-h-[44px]"
         >
-          <span>Choose Package</span>
+          <span>Packages</span>
           <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
 
-      {/* Bitcoin Payment Gateway Modal (Simulated Payment Gateway with 2s loading screen) */}
+      {/* Bitcoin Payment Gateway Modal */}
       {checkoutModalOpen && (
         <BitcoinCheckoutModal
           isOpen={checkoutModalOpen}
@@ -121,6 +165,7 @@ export default function App() {
           depositAmountUsd={depositAmountUsd}
           btcPrice={btcPrice}
           onInvestmentSuccess={handleInvestmentSuccess}
+          onRequireAuth={() => handleOpenAuth('login')}
         />
       )}
 
@@ -137,6 +182,32 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Auth Modal (Login / Sign Up) */}
+      {authModalOpen && (
+        <AuthModal
+          isOpen={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          defaultMode={authDefaultMode}
+          onAdminAuthenticated={() => setAdminModalOpen(true)}
+        />
+      )}
+
+      {/* Admin Dashboard Modal */}
+      {adminModalOpen && (
+        <AdminDashboardModal
+          isOpen={adminModalOpen}
+          onClose={() => setAdminModalOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }

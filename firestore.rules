@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users collection - profiles and balances
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Admins registry
+    match /admins/{adminId} {
+      allow read, write: if true;
+    }
+
+    // Deposit verification queue
+    match /deposit_requests/{requestId} {
+      allow read, write: if true;
+    }
+
+    // Verified Active Investments
+    match /active_investments/{investmentId} {
+      allow read, write: if true;
+    }
+
+    // Fallback connection test
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Default deny for others
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

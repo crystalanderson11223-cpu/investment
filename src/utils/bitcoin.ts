@@ -29,24 +29,63 @@ export function generateOrderId(): string {
 }
 
 export async function fetchLiveBtcPrice(): Promise<number> {
+  // 1. Try Binance public ticker (high reliability & low latency)
   try {
-    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', {
-      headers: { Accept: 'application/json' },
-    });
+    const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
     if (res.ok) {
       const data = await res.json();
-      if (data?.bitcoin?.usd) {
-        return data.bitcoin.usd;
-      }
+      const val = parseFloat(data.price);
+      if (!isNaN(val) && val > 0) return val;
     }
   } catch {
-    // Silently fallback to reference price on network or CORS restrictions
+    // continue to next provider
   }
+
+  // 2. Try CoinGecko
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.bitcoin?.usd) return data.bitcoin.usd;
+    }
+  } catch {
+    // continue
+  }
+
+  // 3. Try CoinCap
+  try {
+    const res = await fetch('https://api.coincap.io/v2/assets/bitcoin');
+    if (res.ok) {
+      const data = await res.json();
+      const val = parseFloat(data.data.priceUsd);
+      if (!isNaN(val) && val > 0) return val;
+    }
+  } catch {
+    // continue
+  }
+
   return DEFAULT_BTC_PRICE;
 }
 
 const STORAGE_KEY = 'aurum_active_investments_v1';
 const BTC_ADDRESS_KEY = 'aurum_btc_deposit_address';
+const DEPOSIT_REQUESTS_KEY = 'aurum_deposit_requests_v1';
+
+export interface LocalDepositRequest {
+  id: string;
+  orderId: string;
+  userId: string;
+  userEmail: string;
+  packageId: string;
+  packageName: string;
+  amountUsd: number;
+  amountBtc: string;
+  txHash: string;
+  status: 'pending' | 'approved' | 'rejected';
+  submittedAt: number;
+  reviewedAt?: number;
+  reviewedBy?: string;
+}
 
 export function getSavedInvestments(): ActiveInvestment[] {
   try {
@@ -60,8 +99,59 @@ export function getSavedInvestments(): ActiveInvestment[] {
 
 export function saveInvestment(inv: ActiveInvestment): void {
   const current = getSavedInvestments();
-  const updated = [inv, ...current];
+  // Avoid duplicate by ID
+  const filtered = current.filter((x) => x.id !== inv.id);
+  const updated = [inv, ...filtered];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+}
+
+export function getLocalDepositRequests(): LocalDepositRequest[] {
+  try {
+    const item = localStorage.getItem(DEPOSIT_REQUESTS_KEY);
+    if (!item) {
+      // Provide an initial sample request so admin has something immediately testable
+      const sampleReq: LocalDepositRequest = {
+        id: 'REQ-INIT-01',
+        orderId: 'AUR-BTC-892410',
+        userId: 'usr-client-01',
+        userEmail: 'marcus.vance@investor.com',
+        packageId: 'growth',
+        packageName: 'Growth Alpha',
+        amountUsd: 5000,
+        amountBtc: '0.05354000',
+        txHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        status: 'pending',
+        submittedAt: Date.now() - 35 * 60 * 1000,
+      };
+      localStorage.setItem(DEPOSIT_REQUESTS_KEY, JSON.stringify([sampleReq]));
+      return [sampleReq];
+    }
+    return JSON.parse(item);
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalDepositRequest(req: LocalDepositRequest): void {
+  const current = getLocalDepositRequests();
+  const filtered = current.filter((r) => r.id !== req.id);
+  const updated = [req, ...filtered];
+  localStorage.setItem(DEPOSIT_REQUESTS_KEY, JSON.stringify(updated));
+}
+
+export function updateLocalDepositRequestStatus(
+  id: string,
+  status: 'approved' | 'rejected',
+  reviewedBy: string = 'admin'
+): LocalDepositRequest | null {
+  const current = getLocalDepositRequests();
+  const req = current.find((r) => r.id === id);
+  if (!req) return null;
+  req.status = status;
+  req.reviewedAt = Date.now();
+  req.reviewedBy = reviewedBy;
+  localStorage.setItem(DEPOSIT_REQUESTS_KEY, JSON.stringify(current));
+  return req;
 }
 
 export function getCustomBtcAddress(): string | null {
