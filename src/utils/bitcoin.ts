@@ -169,3 +169,12 @@ export function saveCustomBtcAddress(addr: string): void {
     // ignore
   }
 }
+
+export function clearLocalDepositRequests(): void {
+  try {
+    localStorage.removeItem(DEPOSIT_REQUESTS_KEY);
+  } catch {
+    // ignore
+  }
+}
+

@@ -22,7 +22,13 @@ export const Hero: React.FC<HeroProps> = ({ onOpenPortfolio, activeCount }) => {
           </h1>
 
           <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">
-            Welcome to New Investment Company. We provide structured digital asset packages offering predictable annualized returns settled on the Bitcoin blockchain. Monitor live market exchange rates, review package parameters, and manage your active positions with direct on-chain verification.
+            the choice is completely yours depending on how much you’d like to start with.  
+
+If you start with $10,000 you could be earning up to $50,000 every month.  
+if you decide to start with $5,000 you could make around $25000 every month.  
+And if you decide to start with $1000 you could make around $18000 every month 
+If you invest $500, you could make around $5000 every month
+It all depends on the package you choose and how you want to grow your earnings. I’ll be here to guide you through every step. 
           </p>
         </div>
 

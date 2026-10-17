@@ -17,6 +17,7 @@ import {
   getLocalDepositRequests,
   updateLocalDepositRequestStatus,
   saveInvestment,
+  clearLocalDepositRequests,
   LocalDepositRequest,
 } from '../utils/bitcoin';
 import {
@@ -253,6 +254,24 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
     }
   };
 
+  const handleClearAllRequests = () => {
+    if (
+      !window.confirm(
+        'Are you sure you want to clear all deposit requests? This will remove all items from the view.'
+      )
+    ) {
+      return;
+    }
+    setStatusMsg(null);
+    try {
+      clearLocalDepositRequests();
+      setRequests([]);
+      setStatusMsg({ type: 'success', text: 'All deposit requests cleared successfully.' });
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: `Failed to clear requests: ${err.message}` });
+    }
+  };
+
   const openUserEditor = (user: UserProfile) => {
     setEditingUser(user);
     setEditUsdBalance(user.balanceUsd || 0);
@@ -411,7 +430,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
           {activeTab === 'requests' ? (
             /* TAB 1: DEPOSIT REQUESTS */
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                     Bitcoin Deposit Verification Queue
@@ -420,8 +439,20 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
                     Review and approve submitted Bitcoin on-chain transactions to credit user balances.
                   </p>
                 </div>
-                <div className="text-[11px] font-mono text-slate-500">
-                  Total Submissions: <span className="font-bold text-slate-800">{requests.length}</span>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[11px] font-mono text-slate-500">
+                    Total: <span className="font-bold text-slate-800">{requests.length}</span>
+                  </span>
+                  {requests.length > 0 && (
+                    <button
+                      onClick={handleClearAllRequests}
+                      className="px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-800 font-bold text-xs uppercase flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                      title="Clear all deposit requests"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Clear All</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
