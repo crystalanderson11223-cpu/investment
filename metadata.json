@@ -1,0 +1,6 @@
+{
+  "name": "Aurum Capital | Digital Wealth & Bitcoin Investments",
+  "description": "Institutional-grade wealth management and structured yield packages funded directly via Bitcoin cryptocurrency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
