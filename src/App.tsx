@@ -145,7 +145,7 @@ function MainApp() {
           className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-xs font-semibold cursor-pointer min-h-[44px]"
         >
           <Wallet className="h-4 w-4 text-amber-500" />
-          <span className="truncate">{currentUser ? 'Portfolio' : 'Sign In / Sign Up'}</span>
+          <span className="truncate">Portfolio</span>
           {currentUser && activeInvestments.length > 0 && (
             <span className="font-mono text-[11px] font-bold px-1.5 rounded bg-amber-400 text-slate-950">
               {activeInvestments.length}

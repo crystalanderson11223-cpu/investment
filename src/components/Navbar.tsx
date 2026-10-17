@@ -51,7 +51,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="hover:text-amber-600 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer py-2"
             >
               <Wallet className="h-4 w-4 text-slate-400" />
-              <span>{currentUser ? 'Portfolio' : 'Sign In / Sign Up'}</span>
+              <span>Portfolio</span>
               {currentUser && activeCount > 0 && (
                 <span className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 tabular-nums">
                   {activeCount}
@@ -70,14 +70,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* User Auth Info */}
             {currentUser ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => {
                     if (isAdmin && onOpenAdmin) {
                       onOpenAdmin();
                     }
                   }}
-                  className={`text-xs font-mono truncate max-w-[140px] px-2 py-1 rounded transition-colors ${
+                  className={`hidden md:block text-xs font-mono truncate max-w-[140px] px-2 py-1 rounded transition-colors ${
                     isAdmin
                       ? 'text-slate-700 hover:text-amber-700 hover:bg-amber-50 cursor-pointer'
                       : 'text-slate-600 cursor-default'
@@ -153,7 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <div className="flex items-center gap-2.5">
                 <Wallet className="h-4 w-4 text-amber-500" />
-                <span>{currentUser ? 'Portfolio' : 'Sign in, sign up to continue'}</span>
+                <span>Portfolio</span>
               </div>
               {currentUser && activeCount > 0 && (
                 <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-bold">
