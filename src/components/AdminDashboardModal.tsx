@@ -34,6 +34,7 @@ import {
   UserCheck,
   Save,
   Plus,
+  Trash2,
 } from 'lucide-react';
 
 interface AdminDashboardModalProps {
@@ -42,7 +43,7 @@ interface AdminDashboardModalProps {
 }
 
 export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen, onClose }) => {
-  const { isAdmin, currentUser, updateUserByAdmin, getAllClientUsers } = useAuth();
+  const { isAdmin, currentUser, updateUserByAdmin, deleteUserByAdmin, getAllClientUsers } = useAuth();
   const [activeTab, setActiveTab] = useState<'requests' | 'users'>('requests');
   const [requests, setRequests] = useState<LocalDepositRequest[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -287,6 +288,24 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
       setStatusMsg({ type: 'error', text: `Failed to update user: ${err.message}` });
     } finally {
       setSavingUser(false);
+    }
+  };
+
+  const handleDeleteUser = async (user: UserProfile) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to completely delete user ${user.email}? This will permanently remove their account and data from Firestore and local storage.`
+      )
+    ) {
+      return;
+    }
+    setStatusMsg(null);
+    try {
+      await deleteUserByAdmin(user.uid);
+      setUsers((prev) => prev.filter((item) => item.uid !== user.uid));
+      setStatusMsg({ type: 'success', text: `Successfully deleted user ${user.email} completely.` });
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: `Failed to delete user: ${err.message}` });
     }
   };
 
@@ -573,13 +592,23 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
                           <div className="text-[11px] text-slate-500">{u.email}</div>
                         </div>
 
-                        <button
-                          onClick={() => openUserEditor(u)}
-                          className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          <span>Edit Balance & Details</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openUserEditor(u)}
+                            className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(u)}
+                            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                            title="Completely delete user account and data"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-700">

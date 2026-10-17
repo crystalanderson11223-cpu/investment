@@ -6,7 +6,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, getDocs, collection, query, where, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, getDocs, collection, query, where, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 export const ADMIN_EMAIL = 'crystalanderson11223@gmail.com';
@@ -34,6 +34,7 @@ interface AuthContextType {
   signupWithEmail: (identifier: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUserByAdmin: (uid: string, updates: Partial<UserProfile>) => Promise<void>;
+  deleteUserByAdmin: (uid: string) => Promise<void>;
   getAllClientUsers: () => Promise<UserProfile[]>;
   error: string | null;
   clearError: () => void;
@@ -387,6 +388,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const deleteUserByAdmin = async (uid: string) => {
+    setError(null);
+    // 1. Remove from local storage registered users list
+    const localUsers = getLocalUsers();
+    const filtered = localUsers.filter((u) => u.uid !== uid);
+    saveLocalUsers(filtered);
+
+    // If current user or profile matches deleted uid, log out
+    if (currentUser?.uid === uid || profile?.uid === uid) {
+      await logout();
+    }
+
+    // 2. Delete document from Firestore users collection
+    try {
+      await deleteDoc(doc(db, 'users', uid));
+    } catch (e) {
+      console.warn('Firestore delete user error:', e);
+    }
+  };
+
   const getAllClientUsers = async (): Promise<UserProfile[]> => {
     const listMap = new Map<string, UserProfile>();
 
@@ -430,6 +451,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signupWithEmail,
         logout,
         updateUserByAdmin,
+        deleteUserByAdmin,
         getAllClientUsers,
         error,
         clearError,
