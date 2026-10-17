@@ -29,12 +29,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Zone 1: Brand title wordmark */}
           <a
             href="#"
-            className="group flex items-center gap-2.5 text-base sm:text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 min-h-[44px]"
+            className="group flex items-center gap-2 text-xs sm:text-base md:text-lg font-bold tracking-tight text-slate-900 shrink-0 min-h-[44px]"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 text-slate-950 shadow-sm shadow-amber-500/20">
-              <span className="font-mono text-sm font-black">N</span>
+            <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 text-slate-950 shadow-sm shadow-amber-500/20 shrink-0">
+              <span className="font-mono text-xs sm:text-sm font-black">N</span>
             </div>
-            <span>New Investment Company</span>
+            <span className="truncate max-w-[150px] sm:max-w-none">New Investment Company</span>
           </a>
 
           {/* Zone 2: Navigation Links */}
@@ -47,12 +47,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Investment Plans</span>
             </button>
             <button
-              onClick={onOpenPortfolio}
+              onClick={currentUser ? onOpenPortfolio : () => onOpenAuth('login')}
               className="hover:text-amber-600 transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer py-2"
             >
               <Wallet className="h-4 w-4 text-slate-400" />
-              <span>Portfolio</span>
-              {activeCount > 0 && (
+              <span>{currentUser ? 'Portfolio' : 'Sign In / Sign Up'}</span>
+              {currentUser && activeCount > 0 && (
                 <span className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 tabular-nums">
                   {activeCount}
                 </span>
@@ -143,15 +143,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
-                onOpenPortfolio();
+                if (currentUser) {
+                  onOpenPortfolio();
+                } else {
+                  onOpenAuth('login');
+                }
               }}
               className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-50 text-slate-900 text-xs font-semibold"
             >
               <div className="flex items-center gap-2.5">
                 <Wallet className="h-4 w-4 text-amber-500" />
-                <span>Portfolio</span>
+                <span>{currentUser ? 'Portfolio' : 'Sign in, sign up to continue'}</span>
               </div>
-              {activeCount > 0 && (
+              {currentUser && activeCount > 0 && (
                 <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-bold">
                   {activeCount}
                 </span>

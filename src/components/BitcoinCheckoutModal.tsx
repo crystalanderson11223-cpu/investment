@@ -8,7 +8,6 @@ import {
   generateTxHash,
   saveInvestment,
   getCustomBtcAddress,
-  saveLocalDepositRequest,
 } from '../utils/bitcoin';
 import { DEFAULT_BTC_ADDRESS } from '../data/packages';
 import { useAuth } from '../context/AuthContext';
@@ -112,15 +111,8 @@ export const BitcoinCheckoutModal: React.FC<BitcoinCheckoutModalProps> = ({
         submittedAt: Date.now(),
       };
 
-      // Always save locally so Admin panel sees it instantly
-      saveLocalDepositRequest(depositReqData);
-
-      // Also persist to Firestore
-      try {
-        await setDoc(doc(db, 'deposit_requests', reqId), depositReqData);
-      } catch (fbErr) {
-        console.warn('Firestore deposit logging error (saved locally):', fbErr);
-      }
+      // Persist 100% to Firestore
+      await setDoc(doc(db, 'deposit_requests', reqId), depositReqData);
 
       const now = Date.now();
       const newInv: ActiveInvestment = {

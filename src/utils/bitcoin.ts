@@ -69,8 +69,6 @@ export async function fetchLiveBtcPrice(): Promise<number> {
 
 const STORAGE_KEY = 'aurum_active_investments_v1';
 const BTC_ADDRESS_KEY = 'aurum_btc_deposit_address';
-const DEPOSIT_REQUESTS_KEY = 'aurum_deposit_requests_v1';
-
 export interface LocalDepositRequest {
   id: string;
   orderId: string;
@@ -105,55 +103,6 @@ export function saveInvestment(inv: ActiveInvestment): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 }
 
-export function getLocalDepositRequests(): LocalDepositRequest[] {
-  try {
-    const item = localStorage.getItem(DEPOSIT_REQUESTS_KEY);
-    if (!item) {
-      // Provide an initial sample request so admin has something immediately testable
-      const sampleReq: LocalDepositRequest = {
-        id: 'REQ-INIT-01',
-        orderId: 'AUR-BTC-892410',
-        userId: 'usr-client-01',
-        userEmail: 'marcus.vance@investor.com',
-        packageId: 'growth',
-        packageName: 'Growth Alpha',
-        amountUsd: 5000,
-        amountBtc: '0.05354000',
-        txHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-        status: 'pending',
-        submittedAt: Date.now() - 35 * 60 * 1000,
-      };
-      localStorage.setItem(DEPOSIT_REQUESTS_KEY, JSON.stringify([sampleReq]));
-      return [sampleReq];
-    }
-    return JSON.parse(item);
-  } catch {
-    return [];
-  }
-}
-
-export function saveLocalDepositRequest(req: LocalDepositRequest): void {
-  const current = getLocalDepositRequests();
-  const filtered = current.filter((r) => r.id !== req.id);
-  const updated = [req, ...filtered];
-  localStorage.setItem(DEPOSIT_REQUESTS_KEY, JSON.stringify(updated));
-}
-
-export function updateLocalDepositRequestStatus(
-  id: string,
-  status: 'approved' | 'rejected',
-  reviewedBy: string = 'admin'
-): LocalDepositRequest | null {
-  const current = getLocalDepositRequests();
-  const req = current.find((r) => r.id === id);
-  if (!req) return null;
-  req.status = status;
-  req.reviewedAt = Date.now();
-  req.reviewedBy = reviewedBy;
-  localStorage.setItem(DEPOSIT_REQUESTS_KEY, JSON.stringify(current));
-  return req;
-}
-
 export function getCustomBtcAddress(): string | null {
   try {
     return localStorage.getItem(BTC_ADDRESS_KEY);
@@ -170,11 +119,4 @@ export function saveCustomBtcAddress(addr: string): void {
   }
 }
 
-export function clearLocalDepositRequests(): void {
-  try {
-    localStorage.removeItem(DEPOSIT_REQUESTS_KEY);
-  } catch {
-    // ignore
-  }
-}
 

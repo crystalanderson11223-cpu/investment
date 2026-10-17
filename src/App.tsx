@@ -88,7 +88,7 @@ function MainApp() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-amber-500/20 selection:text-amber-900 pb-16 sm:pb-0">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-amber-500/20 selection:text-amber-900 pb-24 sm:pb-0">
       {/* Top Bar */}
       <Navbar
         activeCount={activeInvestments.length}
@@ -135,12 +135,18 @@ function MainApp() {
       {/* Mobile Bottom Bar */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-30 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-between gap-2 shadow-lg">
         <button
-          onClick={() => setPortfolioModalOpen(true)}
+          onClick={() => {
+            if (currentUser) {
+              setPortfolioModalOpen(true);
+            } else {
+              handleOpenAuth('login');
+            }
+          }}
           className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-xs font-semibold cursor-pointer min-h-[44px]"
         >
           <Wallet className="h-4 w-4 text-amber-500" />
-          <span>Portfolio</span>
-          {activeInvestments.length > 0 && (
+          <span className="truncate">{currentUser ? 'Portfolio' : 'Sign In / Sign Up'}</span>
+          {currentUser && activeInvestments.length > 0 && (
             <span className="font-mono text-[11px] font-bold px-1.5 rounded bg-amber-400 text-slate-950">
               {activeInvestments.length}
             </span>

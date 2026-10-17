@@ -8,16 +8,14 @@ import {
   updateDoc,
   setDoc,
   getDocs,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth, UserProfile, MAX_CLIENT_USERS } from '../context/AuthContext';
 import {
   formatUSD,
   formatBTC,
-  getLocalDepositRequests,
-  updateLocalDepositRequestStatus,
   saveInvestment,
-  clearLocalDepositRequests,
   LocalDepositRequest,
 } from '../utils/bitcoin';
 import {
@@ -60,7 +58,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
   const [editUsername, setEditUsername] = useState<string>('');
   const [savingUser, setSavingUser] = useState<boolean>(false);
 
-  // Load requests and users
+  // Load requests and users from Firestore
   const reloadData = async () => {
     setLoading(true);
     setStatusMsg(null);
@@ -73,28 +71,17 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
       console.warn('Error loading users list:', err);
     }
 
-    // 2. Fetch Requests
+    // 2. Fetch Requests from Firestore
     try {
-      const localReqs = getLocalDepositRequests();
-      setRequests(localReqs);
-
-      // Attempt Firestore live sync
       const q = query(collection(db, 'deposit_requests'), orderBy('submittedAt', 'desc'));
       const snap = await getDocs(q);
-      if (!snap.empty) {
-        const firestoreReqs: LocalDepositRequest[] = [];
-        snap.forEach((d) => {
-          firestoreReqs.push({ id: d.id, ...(d.data() as any) });
-        });
-
-        // Merge keeping newest
-        const map = new Map<string, LocalDepositRequest>();
-        localReqs.forEach((r) => map.set(r.id, r));
-        firestoreReqs.forEach((r) => map.set(r.id, r));
-        setRequests(Array.from(map.values()).sort((a, b) => b.submittedAt - a.submittedAt));
-      }
+      const firestoreReqs: LocalDepositRequest[] = [];
+      snap.forEach((d) => {
+        firestoreReqs.push({ id: d.id, ...(d.data() as any) });
+      });
+      setRequests(firestoreReqs);
     } catch (err) {
-      console.warn('Firestore requests sync:', err);
+      console.warn('Firestore requests fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -104,31 +91,25 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
     if (!isOpen || !isAdmin) return;
     reloadData();
 
-    // Set up Firestore listener if accessible
+    // Set up Firestore listener for deposit requests
     let unsubscribe = () => {};
     try {
       const q = query(collection(db, 'deposit_requests'), orderBy('submittedAt', 'desc'));
       unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          if (!snapshot.empty) {
-            const items: LocalDepositRequest[] = [];
-            snapshot.forEach((docSnap) => {
-              items.push({ id: docSnap.id, ...(docSnap.data() as any) });
-            });
-            const localReqs = getLocalDepositRequests();
-            const map = new Map<string, LocalDepositRequest>();
-            localReqs.forEach((r) => map.set(r.id, r));
-            items.forEach((r) => map.set(r.id, r));
-            setRequests(Array.from(map.values()).sort((a, b) => b.submittedAt - a.submittedAt));
-          }
+          const items: LocalDepositRequest[] = [];
+          snapshot.forEach((docSnap) => {
+            items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+          });
+          setRequests(items);
         },
-        () => {
-          // ignore error and rely on local state
+        (err) => {
+          console.warn('Deposit requests snapshot error:', err);
         }
       );
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn('Error setting up deposit requests listener:', err);
     }
 
     return () => unsubscribe();
@@ -162,10 +143,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
     try {
       const now = Date.now();
 
-      // 1. Update in local storage
-      updateLocalDepositRequestStatus(req.id, 'approved', currentUser?.email || 'admin');
-
-      // 2. Add to active investments so user dashboard/portfolio immediately shows it
+      // 1. Add to active investments so user dashboard/portfolio immediately shows it
       saveInvestment({
         id: req.id,
         packageId: req.packageId,
@@ -183,34 +161,30 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
         btcPriceAtDeposit: 98000,
       });
 
-      // 3. Sync to Firestore
-      try {
-        const reqRef = doc(db, 'deposit_requests', req.id);
-        await updateDoc(reqRef, {
-          status: 'approved',
-          reviewedAt: now,
-          reviewedBy: currentUser?.email || 'admin',
-        });
+      // 2. Update Firestore
+      const reqRef = doc(db, 'deposit_requests', req.id);
+      await updateDoc(reqRef, {
+        status: 'approved',
+        reviewedAt: now,
+        reviewedBy: currentUser?.email || 'admin',
+      });
 
-        const invRef = doc(db, 'active_investments', req.id);
-        await setDoc(invRef, {
-          id: req.id,
-          userId: req.userId,
-          userEmail: req.userEmail,
-          packageId: req.packageId,
-          packageName: req.packageName,
-          investedUsd: req.amountUsd,
-          investedBtc: req.amountBtc,
-          apyPercent: 12.8,
-          termDays: 90,
-          startDate: now,
-          endDate: now + 90 * 24 * 60 * 60 * 1000,
-          txHash: req.txHash,
-          status: 'active',
-        });
-      } catch (fbErr) {
-        console.warn('Firestore approve sync:', fbErr);
-      }
+      const invRef = doc(db, 'active_investments', req.id);
+      await setDoc(invRef, {
+        id: req.id,
+        userId: req.userId,
+        userEmail: req.userEmail,
+        packageId: req.packageId,
+        packageName: req.packageName,
+        investedUsd: req.amountUsd,
+        investedBtc: req.amountBtc,
+        apyPercent: 12.8,
+        termDays: 90,
+        startDate: now,
+        endDate: now + 90 * 24 * 60 * 60 * 1000,
+        txHash: req.txHash,
+        status: 'active',
+      });
 
       setRequests((prev) =>
         prev.map((r) => (r.id === req.id ? { ...r, status: 'approved', reviewedAt: now } : r))
@@ -229,18 +203,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
     setStatusMsg(null);
     try {
       const now = Date.now();
-      updateLocalDepositRequestStatus(req.id, 'rejected', currentUser?.email || 'admin');
-
-      try {
-        const reqRef = doc(db, 'deposit_requests', req.id);
-        await updateDoc(reqRef, {
-          status: 'rejected',
-          reviewedAt: now,
-          reviewedBy: currentUser?.email || 'admin',
-        });
-      } catch (fbErr) {
-        console.warn('Firestore reject sync:', fbErr);
-      }
+      const reqRef = doc(db, 'deposit_requests', req.id);
+      await updateDoc(reqRef, {
+        status: 'rejected',
+        reviewedAt: now,
+        reviewedBy: currentUser?.email || 'admin',
+      });
 
       setRequests((prev) =>
         prev.map((r) => (r.id === req.id ? { ...r, status: 'rejected', reviewedAt: now } : r))
@@ -254,19 +222,21 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
     }
   };
 
-  const handleClearAllRequests = () => {
+  const handleClearAllRequests = async () => {
     if (
       !window.confirm(
-        'Are you sure you want to clear all deposit requests? This will remove all items from the view.'
+        'Are you sure you want to clear all deposit requests? This will permanently delete all requests from Firestore.'
       )
     ) {
       return;
     }
     setStatusMsg(null);
     try {
-      clearLocalDepositRequests();
+      const snap = await getDocs(collection(db, 'deposit_requests'));
+      const deletePromises = snap.docs.map((d) => deleteDoc(doc(db, 'deposit_requests', d.id)));
+      await Promise.all(deletePromises);
       setRequests([]);
-      setStatusMsg({ type: 'success', text: 'All deposit requests cleared successfully.' });
+      setStatusMsg({ type: 'success', text: 'All deposit requests cleared from Firestore successfully.' });
     } catch (err: any) {
       setStatusMsg({ type: 'error', text: `Failed to clear requests: ${err.message}` });
     }
