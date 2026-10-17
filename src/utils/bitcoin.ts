@@ -67,8 +67,6 @@ export async function fetchLiveBtcPrice(): Promise<number> {
   return DEFAULT_BTC_PRICE;
 }
 
-const STORAGE_KEY = 'aurum_active_investments_v1';
-const BTC_ADDRESS_KEY = 'aurum_btc_deposit_address';
 export interface LocalDepositRequest {
   id: string;
   orderId: string;
@@ -85,6 +83,8 @@ export interface LocalDepositRequest {
   reviewedBy?: string;
 }
 
+const STORAGE_KEY = 'aurum_active_investments_v1';
+
 export function getSavedInvestments(): ActiveInvestment[] {
   try {
     const item = localStorage.getItem(STORAGE_KEY);
@@ -97,26 +97,11 @@ export function getSavedInvestments(): ActiveInvestment[] {
 
 export function saveInvestment(inv: ActiveInvestment): void {
   const current = getSavedInvestments();
-  // Avoid duplicate by ID
   const filtered = current.filter((x) => x.id !== inv.id);
   const updated = [inv, ...filtered];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 }
 
-export function getCustomBtcAddress(): string | null {
-  try {
-    return localStorage.getItem(BTC_ADDRESS_KEY);
-  } catch {
-    return null;
-  }
-}
 
-export function saveCustomBtcAddress(addr: string): void {
-  try {
-    localStorage.setItem(BTC_ADDRESS_KEY, addr);
-  } catch {
-    // ignore
-  }
-}
 
 

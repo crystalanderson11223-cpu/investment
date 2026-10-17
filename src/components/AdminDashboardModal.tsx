@@ -9,6 +9,7 @@ import {
   setDoc,
   getDocs,
   deleteDoc,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth, UserProfile, MAX_CLIENT_USERS } from '../context/AuthContext';
@@ -18,6 +19,8 @@ import {
   saveInvestment,
   LocalDepositRequest,
 } from '../utils/bitcoin';
+import { DEFAULT_BTC_ADDRESS } from '../data/packages';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   X,
   Shield,
@@ -34,6 +37,7 @@ import {
   Save,
   Plus,
   Trash2,
+  Wallet,
 } from 'lucide-react';
 
 interface AdminDashboardModalProps {
@@ -43,9 +47,11 @@ interface AdminDashboardModalProps {
 
 export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen, onClose }) => {
   const { isAdmin, currentUser, updateUserByAdmin, deleteUserByAdmin, getAllClientUsers } = useAuth();
-  const [activeTab, setActiveTab] = useState<'requests' | 'users'>('requests');
+  const [activeTab, setActiveTab] = useState<'requests' | 'users' | 'wallet'>('requests');
   const [requests, setRequests] = useState<LocalDepositRequest[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [walletAddress, setWalletAddress] = useState<string>(DEFAULT_BTC_ADDRESS);
+  const [savingWallet, setSavingWallet] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -53,7 +59,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
   // User editing state
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editUsdBalance, setEditUsdBalance] = useState<number>(0);
-  const [editBtcBalance, setEditBtcBalance] = useState<number>(0);
   const [editStatus, setEditStatus] = useState<'active' | 'suspended' | 'verified'>('active');
   const [editUsername, setEditUsername] = useState<string>('');
   const [savingUser, setSavingUser] = useState<boolean>(false);
@@ -82,8 +87,37 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
       setRequests(firestoreReqs);
     } catch (err) {
       console.warn('Firestore requests fetch error:', err);
+    }
+
+    // 3. Fetch Wallet Address from Firestore
+    try {
+      const wSnap = await getDoc(doc(db, 'settings', 'btc_wallet'));
+      if (wSnap.exists() && wSnap.data().address) {
+        setWalletAddress(wSnap.data().address);
+      } else {
+        setWalletAddress(DEFAULT_BTC_ADDRESS);
+      }
+    } catch (err) {
+      console.warn('Error loading wallet address:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveWallet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingWallet(true);
+    setStatusMsg(null);
+    try {
+      await setDoc(doc(db, 'settings', 'btc_wallet'), {
+        address: walletAddress.trim(),
+        updatedAt: Date.now(),
+      });
+      setStatusMsg({ type: 'success', text: 'Bitcoin deposit wallet address updated successfully in Firestore!' });
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: `Failed to update wallet address: ${err.message}` });
+    } finally {
+      setSavingWallet(false);
     }
   };
 
@@ -245,7 +279,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
   const openUserEditor = (user: UserProfile) => {
     setEditingUser(user);
     setEditUsdBalance(user.balanceUsd || 0);
-    setEditBtcBalance(user.balanceBtc || 0);
     setEditStatus(user.status || 'active');
     setEditUsername(user.username || user.email.split('@')[0]);
   };
@@ -258,7 +291,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
 
     const updates: Partial<UserProfile> = {
       balanceUsd: Number(editUsdBalance),
-      balanceBtc: Number(editBtcBalance),
       status: editStatus,
       username: editUsername.trim(),
     };
@@ -374,6 +406,17 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
             <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-800 font-mono text-[10px]">
               {clientUsers.length}/{MAX_CLIENT_USERS} Limit
             </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('wallet')}
+            className={`py-3 px-5 sm:px-6 transition-colors cursor-pointer flex items-center gap-2 ${
+              activeTab === 'wallet'
+                ? 'text-slate-900 border-b-2 border-amber-500 font-bold bg-white'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Wallet className="h-4 w-4 text-amber-500" />
+            <span>Wallet Settings</span>
           </button>
         </div>
 
@@ -494,15 +537,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
                             <span className="truncate max-w-[90px]" title={req.txHash}>
                               {req.txHash.slice(0, 8)}...{req.txHash.slice(-4)}
                             </span>
-                            <a
-                              href={`https://mempool.space/tx/${req.txHash}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-amber-600 hover:text-amber-700 p-0.5 rounded hover:bg-amber-50"
-                              title="Inspect on Mempool Explorer"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
                           </div>
                         </div>
                       </div>
@@ -682,33 +716,21 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-medium mb-1">Balance (USD $):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editUsdBalance}
-                    onChange={(e) => setEditUsdBalance(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-900 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-medium mb-1">Balance (BTC):</label>
-                  <input
-                    type="number"
-                    step="0.00000001"
-                    value={editBtcBalance}
-                    onChange={(e) => setEditBtcBalance(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-900 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">Total Principal Balance (USD $):</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editUsdBalance}
+                  onChange={(e) => setEditUsdBalance(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-900 focus:outline-none focus:border-amber-500"
+                />
               </div>
 
               {/* Quick Adjust Buttons */}
               <div>
                 <label className="block text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-1.5">
-                  Quick Add Balance:
+                  Quick Add Principal:
                 </label>
                 <div className="grid grid-cols-4 gap-1.5">
                   {[500, 1000, 5000, 10000].map((amt) => (
@@ -717,7 +739,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
                       type="button"
                       onClick={() => {
                         setEditUsdBalance((prev) => prev + amt);
-                        setEditBtcBalance((prev) => parseFloat((prev + amt / 98000).toFixed(8)));
                       }}
                       className="py-1 px-2 rounded bg-slate-100 hover:bg-amber-100 text-slate-800 hover:text-amber-900 font-mono text-[10px] border border-slate-200 transition-colors cursor-pointer"
                     >

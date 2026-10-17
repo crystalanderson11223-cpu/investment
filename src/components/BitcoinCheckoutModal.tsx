@@ -7,11 +7,10 @@ import {
   generateOrderId,
   generateTxHash,
   saveInvestment,
-  getCustomBtcAddress,
 } from '../utils/bitcoin';
 import { DEFAULT_BTC_ADDRESS } from '../data/packages';
 import { useAuth } from '../context/AuthContext';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { X, Copy, Check, Clock, Loader2, CheckCircle2 } from 'lucide-react';
 
@@ -43,13 +42,27 @@ export const BitcoinCheckoutModal: React.FC<BitcoinCheckoutModalProps> = ({
   const [paymentStatus, setPaymentStatus] = useState<'awaiting' | 'verifying' | 'confirmed'>('awaiting');
   const [txHashInput, setTxHashInput] = useState<string>('');
 
-  const btcAddress = getCustomBtcAddress() || DEFAULT_BTC_ADDRESS;
+  const [btcAddress, setBtcAddress] = useState<string>(DEFAULT_BTC_ADDRESS);
   const btcAmount = formatBTC(depositAmountUsd / btcPrice);
   const bitcoinUri = `bitcoin:${btcAddress}?amount=${btcAmount}`;
 
-  // 2-second loading screen upon opening
+  // Load wallet address from Firestore & 2-second loading screen upon opening
   useEffect(() => {
+    async function loadWallet() {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'btc_wallet'));
+        if (snap.exists() && snap.data().address) {
+          setBtcAddress(snap.data().address);
+        } else {
+          setBtcAddress(DEFAULT_BTC_ADDRESS);
+        }
+      } catch {
+        setBtcAddress(DEFAULT_BTC_ADDRESS);
+      }
+    }
+
     if (isOpen) {
+      loadWallet();
       setIsLoadingInvoice(true);
       setPaymentStatus('awaiting');
       const timer = setTimeout(() => {

@@ -245,15 +245,6 @@ export const PortfolioModal: React.FC<PortfolioModalProps> = ({
                           </button>
                         </div>
 
-                        <a
-                          href={`https://mempool.space/tx/${inv.txHash}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-amber-700 hover:text-amber-800 flex items-center gap-1 text-[11px]"
-                        >
-                          <span>Mempool Explorer</span>
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
                       </div>
                     </div>
                   );
