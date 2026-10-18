@@ -99,8 +99,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (docSnap.exists()) {
         const data = docSnap.data() as UserProfile;
-        if (isSystemAdmin && data.role !== 'admin') {
-          const updated = { ...data, role: 'admin' as const };
+        const updates: Partial<UserProfile> = {
+          ...(isSystemAdmin && data.role !== 'admin' ? { role: 'admin' as const } : {}),
+          ...extraData,
+        };
+        if (Object.keys(updates).length > 0) {
+          const updated = { ...data, ...updates };
           await setDoc(userDocRef, updated, { merge: true });
           return updated;
         }
@@ -143,16 +147,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithEmail = async (identifier: string, pass: string) => {
     setError(null);
-    const trimmedId = identifier.trim().toLowerCase();
+    const cleanId = identifier.trim();
+    if (!cleanId || !pass) {
+      const msg = 'Please enter both identifier and password.';
+      setError(msg);
+      throw new Error(msg);
+    }
+
+    const trimmedId = cleanId.toLowerCase();
     const isExplicitAdmin =
       trimmedId === 'admin' ||
       trimmedId === 'administrator' ||
       trimmedId === ADMIN_EMAIL.toLowerCase() ||
       trimmedId.startsWith('admin@');
 
-    // 1. Direct Administrator Login
+    // 1. Administrator Login
     if (isExplicitAdmin) {
-      const adminProf: UserProfile = {
+      const adminDocRef = doc(db, 'users', 'admin-system-uid');
+      let adminProf: UserProfile = {
         uid: 'admin-system-uid',
         email: ADMIN_EMAIL,
         username: 'admin',
@@ -163,60 +175,127 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: new Date().toISOString(),
       };
 
-      setCurrentUser(adminProf);
-      setProfile(adminProf);
-
       try {
-        await setDoc(doc(db, 'users', adminProf.uid), adminProf, { merge: true });
-        await setDoc(doc(db, 'admins', adminProf.uid), { uid: adminProf.uid, email: adminProf.email }, { merge: true });
+        const snap = await getDoc(adminDocRef);
+        if (snap.exists()) {
+          const data = snap.data() as UserProfile;
+          adminProf = { ...adminProf, ...data };
+        }
       } catch (e) {
-        console.warn('Firestore admin sync:', e);
+        console.warn('Error reading admin document:', e);
       }
-      return;
-    }
 
-    // 2. Regular Client User Login (100% Firebase/Firestore)
-    const emailToUse = resolveEmail(identifier);
-
-    try {
-      if (pass.length >= 6) {
+      // Strictly verify administrator password
+      if (adminProf.password) {
+        if (adminProf.password !== pass) {
+          const msg = 'Invalid administrator password.';
+          setError(msg);
+          throw new Error(msg);
+        }
+      } else {
+        // If password is not yet established for admin, establish this password
+        adminProf.password = pass;
         try {
-          const cred = await signInWithEmailAndPassword(auth, emailToUse, pass);
-          const prof = await fetchOrCreateProfile(cred.user);
-          setProfile(prof);
-          setCurrentUser(cred.user);
-          return;
-        } catch {
-          // Fall through to Firestore collection lookup
+          await setDoc(adminDocRef, adminProf, { merge: true });
+          await setDoc(
+            doc(db, 'admins', adminProf.uid),
+            { uid: adminProf.uid, email: adminProf.email },
+            { merge: true }
+          );
+        } catch (e) {
+          console.warn('Admin password init error:', e);
         }
       }
 
-      // Query Firestore users collection for matching email or username
+      setCurrentUser(adminProf);
+      setProfile(adminProf);
+      return;
+    }
+
+    // 2. Regular Client User Login (Search Firestore by username or email)
+    const resolvedEmail = resolveEmail(cleanId);
+    let foundUser: UserProfile | null = null;
+
+    try {
       const usersSnap = await getDocs(collection(db, 'users'));
-      let foundUser: UserProfile | null = null;
       usersSnap.forEach((d) => {
         const u = d.data() as UserProfile;
         if (
-          u.email.toLowerCase() === emailToUse.toLowerCase() ||
-          u.username?.toLowerCase() === identifier.trim().toLowerCase()
+          (u.username && u.username.toLowerCase() === trimmedId) ||
+          (u.email && u.email.toLowerCase() === trimmedId) ||
+          (u.email && u.email.toLowerCase() === resolvedEmail.toLowerCase())
         ) {
           foundUser = u;
         }
       });
+    } catch (e) {
+      console.warn('Firestore user search error:', e);
+    }
 
-      if (foundUser) {
-        const typedUser = foundUser as UserProfile;
-        if (typedUser.password && typedUser.password !== pass && pass.length >= 6) {
-          throw new Error('Invalid password.');
+    // A. User was found in Firestore
+    if (foundUser) {
+      const u = foundUser as UserProfile;
+
+      // If user has a password stored in Firestore, strictly verify it
+      if (u.password !== undefined && u.password !== null && u.password !== '') {
+        if (u.password !== pass) {
+          const msg = 'Invalid password.';
+          setError(msg);
+          throw new Error(msg);
         }
-        setCurrentUser({ uid: typedUser.uid, email: typedUser.email });
-        setProfile(typedUser);
+
+        // Password matches! Attempt Firebase Auth session sync if possible
+        if (pass.length >= 6) {
+          try {
+            const cred = await signInWithEmailAndPassword(auth, u.email, pass);
+            setCurrentUser(cred.user);
+            setProfile(u);
+            return;
+          } catch {
+            // Internal client account
+          }
+        }
+
+        setCurrentUser({ uid: u.uid, email: u.email });
+        setProfile(u);
         return;
       }
 
-      throw new Error('Account not found. Please click Sign Up to register.');
-    } catch (err: any) {
-      const msg = err.message || 'Login failed. Please check credentials.';
+      // If password was NOT stored in Firestore document, verify via Firebase Auth directly
+      try {
+        const cred = await signInWithEmailAndPassword(auth, u.email, pass);
+        // Authentication succeeded! Cache password in Firestore for subsequent checks
+        try {
+          await updateDoc(doc(db, 'users', u.uid), { password: pass });
+        } catch {}
+        setCurrentUser(cred.user);
+        setProfile({ ...u, password: pass });
+        return;
+      } catch {
+        // Firebase Auth rejected password
+        const msg = 'Invalid password.';
+        setError(msg);
+        throw new Error(msg);
+      }
+    }
+
+    // B. User was not found in Firestore - check direct Firebase Auth
+    try {
+      const cred = await signInWithEmailAndPassword(auth, resolvedEmail, pass);
+      const prof = await fetchOrCreateProfile(cred.user, 'user', { password: pass });
+      setProfile(prof);
+      setCurrentUser(cred.user);
+      return;
+    } catch (authErr: any) {
+      if (
+        authErr.code === 'auth/wrong-password' ||
+        authErr.code === 'auth/invalid-credential'
+      ) {
+        const msg = 'Invalid password.';
+        setError(msg);
+        throw new Error(msg);
+      }
+      const msg = 'Account not found. Please click Sign Up to register.';
       setError(msg);
       throw new Error(msg);
     }
@@ -224,15 +303,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signupWithEmail = async (identifier: string, pass: string) => {
     setError(null);
-    const trimmedId = identifier.trim().toLowerCase();
+    const cleanId = identifier.trim();
+    if (!cleanId || !pass) {
+      const msg = 'Please enter both identifier and password.';
+      setError(msg);
+      throw new Error(msg);
+    }
+    if (pass.length < 4) {
+      const msg = 'Password must be at least 4 characters long.';
+      setError(msg);
+      throw new Error(msg);
+    }
+
+    const trimmedId = cleanId.toLowerCase();
     const isExplicitAdmin = trimmedId === 'admin' || trimmedId === ADMIN_EMAIL.toLowerCase();
 
     if (isExplicitAdmin) {
-      await loginWithEmail(identifier, pass);
+      await loginWithEmail(cleanId, pass);
       return;
     }
 
-    const emailToUse = resolveEmail(identifier);
+    const emailToUse = resolveEmail(cleanId);
+
+    // Verify username or email is not already registered
+    const existingUsers = await getDocs(collection(db, 'users'));
+    let alreadyExists = false;
+    existingUsers.forEach((d) => {
+      const u = d.data() as UserProfile;
+      if (
+        (u.username && u.username.toLowerCase() === trimmedId) ||
+        (u.email && u.email.toLowerCase() === emailToUse.toLowerCase())
+      ) {
+        alreadyExists = true;
+      }
+    });
+
+    if (alreadyExists) {
+      const msg = 'An account with this username or email already exists. Please sign in.';
+      setError(msg);
+      throw new Error(msg);
+    }
 
     // Verify maximum 3 registered client users restriction
     const canRegister = await checkUserLimit();
@@ -242,11 +352,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error(limitMsg);
     }
 
-    const newUid = `usr-${Date.now()}`;
+    let finalUid = `usr-${Date.now()}`;
+    let firebaseUser: any = null;
+
+    if (pass.length >= 6) {
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, emailToUse, pass);
+        finalUid = cred.user.uid;
+        firebaseUser = cred.user;
+      } catch (fbErr: any) {
+        if (fbErr.code === 'auth/email-already-in-use') {
+          const msg = 'An account with this email already exists. Please sign in.';
+          setError(msg);
+          throw new Error(msg);
+        }
+      }
+    }
+
     const newProfile: UserProfile = {
-      uid: newUid,
+      uid: finalUid,
       email: emailToUse,
-      username: identifier.trim(),
+      username: cleanId,
       role: 'user',
       balanceUsd: 0,
       balanceBtc: 0,
@@ -255,32 +381,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       password: pass,
     };
 
-    let firebaseSuccess = false;
-    if (pass.length >= 6) {
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, emailToUse, pass);
-        const prof = await fetchOrCreateProfile(cred.user, 'user', { password: pass });
-        setProfile(prof);
-        setCurrentUser(cred.user);
-        firebaseSuccess = true;
-      } catch (fbErr: any) {
-        if (fbErr.code === 'auth/email-already-in-use') {
-          throw new Error('An account with this email already exists. Please sign in.');
-        }
-      }
-    }
+    // Save directly to Firestore users collection
+    await setDoc(doc(db, 'users', finalUid), newProfile);
 
-    // Always save/sync to Firestore users collection
-    try {
-      await setDoc(doc(db, 'users', newProfile.uid), newProfile);
-    } catch (e) {
-      console.warn('Firestore user save error:', e);
-    }
-
-    if (!firebaseSuccess) {
-      setCurrentUser({ uid: newProfile.uid, email: newProfile.email });
-      setProfile(newProfile);
-    }
+    setCurrentUser(firebaseUser || { uid: finalUid, email: emailToUse });
+    setProfile(newProfile);
   };
 
   const logout = async () => {
