@@ -16,7 +16,6 @@ import { useAuth, UserProfile, MAX_CLIENT_USERS } from '../context/AuthContext';
 import {
   formatUSD,
   formatBTC,
-  saveInvestment,
   LocalDepositRequest,
 } from '../utils/bitcoin';
 import { DEFAULT_BTC_ADDRESS } from '../data/packages';
@@ -177,25 +176,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
     try {
       const now = Date.now();
 
-      // 1. Add to active investments so user dashboard/portfolio immediately shows it
-      saveInvestment({
-        id: req.id,
-        packageId: req.packageId,
-        packageName: req.packageName,
-        investedUsd: req.amountUsd,
-        investedBtc: req.amountBtc,
-        apyPercent: 12.8,
-        termDays: 90,
-        startDate: now,
-        endDate: now + 90 * 24 * 60 * 60 * 1000,
-        txHash: req.txHash,
-        status: 'active',
-        nextPayoutDate: now + 24 * 60 * 60 * 1000,
-        accruedEarningsUsd: 0,
-        btcPriceAtDeposit: 98000,
-      });
-
-      // 2. Update Firestore
+      // 1. Update Firestore deposit request
       const reqRef = doc(db, 'deposit_requests', req.id);
       await updateDoc(reqRef, {
         status: 'approved',
@@ -203,6 +184,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
         reviewedBy: currentUser?.email || 'admin',
       });
 
+      // 2. Add to Firestore active_investments collection (100% Firebase, zero local storage)
       const invRef = doc(db, 'active_investments', req.id);
       await setDoc(invRef, {
         id: req.id,
@@ -219,6 +201,21 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
         txHash: req.txHash,
         status: 'active',
       });
+
+      // 3. Credit the user's Total Principal balance in Firestore
+      try {
+        const userDocRef = doc(db, 'users', req.userId);
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) {
+          const uData = userSnap.data() as UserProfile;
+          const currentBal = uData.balanceUsd || 0;
+          await updateDoc(userDocRef, {
+            balanceUsd: currentBal + req.amountUsd,
+          });
+        }
+      } catch (e) {
+        console.warn('Error updating user balance upon approval:', e);
+      }
 
       setRequests((prev) =>
         prev.map((r) => (r.id === req.id ? { ...r, status: 'approved', reviewedAt: now } : r))
@@ -315,7 +312,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
   const handleDeleteUser = async (user: UserProfile) => {
     if (
       !window.confirm(
-        `Are you sure you want to completely delete user ${user.email}? This will permanently remove their account and data from Firestore and local storage.`
+        `Are you sure you want to completely delete user ${user.email}? This will permanently remove their account and data from Firestore.`
       )
     ) {
       return;
@@ -571,7 +568,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
                 </div>
               )}
             </div>
-          ) : (
+          ) : activeTab === 'users' ? (
             /* TAB 2: USERS & BALANCE EDITOR */
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 rounded-xl bg-slate-50 border border-slate-200">
@@ -648,15 +645,15 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-700">
                         <div>
-                          <span className="text-slate-400 block text-[10px]">USD BALANCE</span>
+                          <span className="text-slate-400 block text-[10px]">TOTAL PRINCIPAL</span>
                           <span className="text-slate-900 font-bold text-sm">
                             {formatUSD(u.balanceUsd || 0)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px]">BITCOIN HOLDING</span>
-                          <span className="text-slate-900 font-bold text-sm">
-                            {formatBTC(u.balanceBtc || 0)} BTC
+                          <span className="text-slate-400 block text-[10px]">ACCOUNT STATUS</span>
+                          <span className="text-slate-900 font-semibold text-xs capitalize">
+                            {u.status || 'Active'}
                           </span>
                         </div>
                         <div>
@@ -676,6 +673,66 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({ isOpen
                   ))
                 )}
               </div>
+            </div>
+          ) : (
+            /* TAB 3: WALLET SETTINGS */
+            <div className="space-y-4 max-w-xl mx-auto py-2">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-amber-500" />
+                  <span>Company Bitcoin Deposit Address</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Update the Bitcoin wallet address displayed to clients. The QR code and checkout address update instantly in real-time across all clients via Firebase Firestore.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveWallet} className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Receiving Bitcoin Address:</label>
+                  <input
+                    type="text"
+                    required
+                    value={walletAddress}
+                    onChange={(e) => setWalletAddress(e.target.value.trim())}
+                    placeholder="bc1q..."
+                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 font-mono text-slate-900 focus:outline-none focus:border-amber-500 shadow-xs"
+                  />
+                </div>
+
+                {/* QR Code preview matching the exact address */}
+                <div className="p-5 rounded-xl bg-white border border-slate-200 flex flex-col items-center justify-center space-y-3 shadow-xs">
+                  <span className="text-[10px] uppercase font-mono font-semibold tracking-wider text-slate-400">
+                    Live QR Code Preview (Matches Client Checkout)
+                  </span>
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <QRCodeSVG
+                      value={`bitcoin:${walletAddress || DEFAULT_BTC_ADDRESS}`}
+                      size={168}
+                      level="M"
+                      includeMargin={false}
+                    />
+                  </div>
+                  <div className="font-mono text-[11px] text-slate-700 break-all text-center px-4 font-semibold select-all">
+                    {walletAddress || DEFAULT_BTC_ADDRESS}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={savingWallet}
+                  className="w-full py-3 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm transition-colors"
+                >
+                  {savingWallet ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      <span>Update Wallet Address in Firebase</span>
+                    </>
+                  )}
+                </button>
+              </form>
             </div>
           )}
         </div>

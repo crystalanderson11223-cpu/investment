@@ -6,11 +6,10 @@ import {
   formatBTC,
   generateOrderId,
   generateTxHash,
-  saveInvestment,
 } from '../utils/bitcoin';
 import { DEFAULT_BTC_ADDRESS } from '../data/packages';
 import { useAuth } from '../context/AuthContext';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { X, Copy, Check, Clock, Loader2, CheckCircle2 } from 'lucide-react';
 
@@ -46,30 +45,35 @@ export const BitcoinCheckoutModal: React.FC<BitcoinCheckoutModalProps> = ({
   const btcAmount = formatBTC(depositAmountUsd / btcPrice);
   const bitcoinUri = `bitcoin:${btcAddress}?amount=${btcAmount}`;
 
-  // Load wallet address from Firestore & 2-second loading screen upon opening
+  // Real-time listener for company Bitcoin wallet address from Firestore & invoice loading
   useEffect(() => {
-    async function loadWallet() {
-      try {
-        const snap = await getDoc(doc(db, 'settings', 'btc_wallet'));
+    if (!isOpen) return;
+
+    setIsLoadingInvoice(true);
+    setPaymentStatus('awaiting');
+    const timer = setTimeout(() => {
+      setIsLoadingInvoice(false);
+    }, 2000);
+
+    const unsubscribe = onSnapshot(
+      doc(db, 'settings', 'btc_wallet'),
+      (snap) => {
         if (snap.exists() && snap.data().address) {
           setBtcAddress(snap.data().address);
         } else {
           setBtcAddress(DEFAULT_BTC_ADDRESS);
         }
-      } catch {
+      },
+      (err) => {
+        console.warn('Wallet address listener error:', err);
         setBtcAddress(DEFAULT_BTC_ADDRESS);
       }
-    }
+    );
 
-    if (isOpen) {
-      loadWallet();
-      setIsLoadingInvoice(true);
-      setPaymentStatus('awaiting');
-      const timer = setTimeout(() => {
-        setIsLoadingInvoice(false);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, [isOpen]);
 
   // Expiration countdown timer
@@ -141,10 +145,8 @@ export const BitcoinCheckoutModal: React.FC<BitcoinCheckoutModalProps> = ({
         txHash: assignedHash,
         status: 'active',
         nextPayoutDate: now + 24 * 60 * 60 * 1000,
-        accruedEarningsUsd: 0,
         btcPriceAtDeposit: btcPrice,
       };
-      saveInvestment(newInv);
       onInvestmentSuccess(newInv);
     } catch (err) {
       console.error('Error logging deposit request:', err);

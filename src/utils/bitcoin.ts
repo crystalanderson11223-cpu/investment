@@ -83,25 +83,6 @@ export interface LocalDepositRequest {
   reviewedBy?: string;
 }
 
-const STORAGE_KEY = 'aurum_active_investments_v1';
-
-export function getSavedInvestments(): ActiveInvestment[] {
-  try {
-    const item = localStorage.getItem(STORAGE_KEY);
-    if (!item) return [];
-    return JSON.parse(item);
-  } catch {
-    return [];
-  }
-}
-
-export function saveInvestment(inv: ActiveInvestment): void {
-  const current = getSavedInvestments();
-  const filtered = current.filter((x) => x.id !== inv.id);
-  const updated = [inv, ...filtered];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-}
-
 
 
 

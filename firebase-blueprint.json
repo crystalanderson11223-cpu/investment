@@ -60,6 +60,15 @@
         "status": { "type": "string", "enum": ["active", "completed"] }
       },
       "required": ["id", "userId", "packageId", "packageName", "investedUsd", "investedBtc", "apyPercent", "termDays", "startDate", "endDate", "status"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "System settings such as Bitcoin deposit wallet address",
+      "type": "object",
+      "properties": {
+        "address": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -78,6 +87,10 @@
     "/active_investments/{investmentId}": {
       "schema": { "$ref": "#/entities/ActiveInvestment" },
       "description": "Approved and verified active investments"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/Setting" },
+      "description": "Global application configuration settings"
     }
   }
 }

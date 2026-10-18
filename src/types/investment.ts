@@ -41,6 +41,5 @@ export interface ActiveInvestment {
   txHash: string;
   status: 'active' | 'completed';
   nextPayoutDate: number;
-  accruedEarningsUsd: number;
   btcPriceAtDeposit: number;
 }

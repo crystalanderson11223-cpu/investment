@@ -4,9 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { INVESTMENT_PACKAGES, DEFAULT_BTC_PRICE } from './data/packages';
+import { INVESTMENT_PACKAGES, DEFAULT_BTC_PRICE, DEFAULT_BTC_ADDRESS } from './data/packages';
 import { InvestmentPackage, ActiveInvestment } from './types/investment';
-import { fetchLiveBtcPrice, getSavedInvestments } from './utils/bitcoin';
+import { fetchLiveBtcPrice } from './utils/bitcoin';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
@@ -20,11 +20,11 @@ import { PortfolioModal } from './components/PortfolioModal';
 import { AuthModal } from './components/AuthModal';
 import { AdminDashboardModal } from './components/AdminDashboardModal';
 import { Wallet, ArrowRight } from 'lucide-react';
-import { doc, getDocFromServer } from 'firebase/firestore';
+import { doc, getDocFromServer, collection, query, where, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
 function MainApp() {
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, profile, isAdmin } = useAuth();
   const [btcPrice, setBtcPrice] = useState<number>(DEFAULT_BTC_PRICE);
   const [activeInvestments, setActiveInvestments] = useState<ActiveInvestment[]>([]);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState<boolean>(false);
@@ -40,7 +40,14 @@ function MainApp() {
   );
 
   useEffect(() => {
-    async function testConnection() {
+    // Purge any stale client-side fallback keys completely
+    try {
+      localStorage.removeItem('aurum_active_investments_v1');
+      localStorage.removeItem('aurum_btc_deposit_address');
+      localStorage.removeItem('aurum_deposit_requests_v1');
+    } catch {}
+
+    async function testConnectionAndSeedSettings() {
       try {
         await getDocFromServer(doc(db, 'test', 'connection'));
       } catch (error) {
@@ -48,13 +55,55 @@ function MainApp() {
           console.warn('Firestore offline or connecting...');
         }
       }
+
+      try {
+        const walletDoc = doc(db, 'settings', 'btc_wallet');
+        const snap = await getDoc(walletDoc);
+        if (!snap.exists() || !snap.data().address) {
+          await setDoc(
+            walletDoc,
+            {
+              address: DEFAULT_BTC_ADDRESS,
+              updatedAt: Date.now(),
+            },
+            { merge: true }
+          );
+        }
+      } catch (e) {
+        console.warn('Wallet setting init notice:', e);
+      }
     }
-    testConnection();
+    testConnectionAndSeedSettings();
   }, []);
 
+  // Listen to Firestore active investments for current user only (100% Firebase, zero local storage)
   useEffect(() => {
-    setActiveInvestments(getSavedInvestments());
+    if (!currentUser) {
+      setActiveInvestments([]);
+      return;
+    }
 
+    const q = query(
+      collection(db, 'active_investments'),
+      where('userId', '==', currentUser.uid)
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: ActiveInvestment[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as ActiveInvestment);
+        });
+        setActiveInvestments(list);
+      },
+      (err) => {
+        console.warn('Investments listener error:', err);
+      }
+    );
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  useEffect(() => {
     const updatePrice = async () => {
       const price = await fetchLiveBtcPrice();
       setBtcPrice(price);
@@ -182,6 +231,7 @@ function MainApp() {
           onClose={() => setPortfolioModalOpen(false)}
           investments={activeInvestments}
           btcPrice={btcPrice}
+          userBalanceUsd={profile?.balanceUsd ?? 0}
           onNewInvestment={() => {
             setPortfolioModalOpen(false);
             scrollToPackages();

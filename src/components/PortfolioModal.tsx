@@ -16,6 +16,7 @@ interface PortfolioModalProps {
   onClose: () => void;
   investments: ActiveInvestment[];
   btcPrice: number;
+  userBalanceUsd?: number;
   onNewInvestment: () => void;
 }
 
@@ -24,6 +25,7 @@ export const PortfolioModal: React.FC<PortfolioModalProps> = ({
   onClose,
   investments,
   btcPrice,
+  userBalanceUsd,
   onNewInvestment,
 }) => {
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
@@ -39,26 +41,9 @@ export const PortfolioModal: React.FC<PortfolioModalProps> = ({
 
   if (!isOpen) return null;
 
-  const enrichedInvestments = investments.map((inv) => {
-    const elapsedSeconds = Math.max(0, (now - inv.startDate) / 1000);
-    const annualRate = inv.apyPercent / 100;
-    const accrued = (inv.investedUsd * annualRate * elapsedSeconds) / (365 * 24 * 3600);
-    return {
-      ...inv,
-      liveAccruedUsd: accrued,
-      liveAccruedBtc: accrued / btcPrice,
-    };
-  });
-
   const totalInvestedUsd = investments.reduce((acc, curr) => acc + curr.investedUsd, 0);
-  const totalInvestedBtc = investments.reduce(
-    (acc, curr) => acc + parseFloat(curr.investedBtc),
-    0
-  );
-  const totalAccruedUsd = enrichedInvestments.reduce(
-    (acc, curr) => acc + curr.liveAccruedUsd,
-    0
-  );
+  const totalPrincipal = typeof userBalanceUsd === 'number' ? userBalanceUsd : totalInvestedUsd;
+  const totalInvestedBtc = totalPrincipal > 0 && btcPrice > 0 ? totalPrincipal / btcPrice : 0;
 
   const handleCopy = (hash: string) => {
     navigator.clipboard.writeText(hash);
@@ -98,7 +83,7 @@ export const PortfolioModal: React.FC<PortfolioModalProps> = ({
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
               <span className="text-xs text-slate-500 font-mono">Total Principal</span>
               <div className="text-xl font-bold text-slate-900 font-mono tabular-nums mt-0.5">
-                {formatUSD(totalInvestedUsd)}
+                {formatUSD(totalPrincipal)}
               </div>
               <div className="text-xs text-amber-700 font-mono">
                 ≈ {formatBTC(totalInvestedBtc)} BTC
@@ -106,29 +91,24 @@ export const PortfolioModal: React.FC<PortfolioModalProps> = ({
             </div>
 
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-mono">Accrued Interest</span>
-                <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-mono font-semibold">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  LIVE
-                </span>
+              <span className="text-xs text-slate-500 font-mono">Treasury Solvency</span>
+              <div className="text-xs sm:text-sm font-bold text-slate-800 mt-1 flex items-center gap-1.5">
+                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>1:1 Verified Reserve</span>
               </div>
-              <div className="text-xl font-bold text-emerald-700 font-mono tabular-nums mt-0.5">
-                +{formatUSD(totalAccruedUsd)}
-              </div>
-              <div className="text-[11px] text-slate-400 font-mono">
-                Continuous compounding
+              <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                100% Principal Guaranteed
               </div>
             </div>
 
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-xs">
-              <span className="text-xs text-slate-500 font-mono">Treasury Status</span>
+              <span className="text-xs text-slate-500 font-mono">Custody Standard</span>
               <div className="text-xs sm:text-sm font-bold text-slate-800 mt-1 flex items-center gap-1.5">
-                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>1:1 Verified Solvency</span>
+                <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0" />
+                <span>Institutional Cold Storage</span>
               </div>
               <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                100% Principal Guaranteed
+                Multi-Sig Asset Protection
               </div>
             </div>
           </div>
@@ -169,7 +149,7 @@ export const PortfolioModal: React.FC<PortfolioModalProps> = ({
               </div>
             ) : (
               <div className="space-y-3">
-                {enrichedInvestments.map((inv) => {
+                {investments.map((inv) => {
                   const daysRemaining = Math.max(
                     0,
                     Math.ceil((inv.endDate - now) / (1000 * 60 * 60 * 24))
@@ -211,9 +191,9 @@ export const PortfolioModal: React.FC<PortfolioModalProps> = ({
                           <span className="text-amber-700 font-bold">{inv.apyPercent}%</span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px]">ACCRUED YIELD</span>
-                          <span className="text-emerald-700 font-bold tabular-nums">
-                            +{formatUSD(inv.liveAccruedUsd)}
+                          <span className="text-slate-400 block text-[10px]">ALLOCATION</span>
+                          <span className="text-slate-900 font-bold tabular-nums">
+                            {formatUSD(inv.investedUsd)}
                           </span>
                         </div>
                         <div>

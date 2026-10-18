@@ -15,7 +15,7 @@ export const INVESTMENT_PACKAGES: InvestmentPackage[] = [
     riskProfile: 'Capital Preserved',
     highlights: [
       '7.5% Fixed Annualized Return',
-      'Daily automated interest credit',
+      'Daily automated yield credit',
       'Short 30-day liquidity lock',
       'Full principal return at maturity',
       'Zero management or withdrawal fees'
@@ -88,7 +88,7 @@ export const INVESTMENT_PACKAGES: InvestmentPackage[] = [
 ];
 
 // Default company Bitcoin receiving address
-export const DEFAULT_BTC_ADDRESS = 'bc1q8w7h7e4vupk7j5x9a2mn07w3k4g8u67v9pl0qa';
+export const DEFAULT_BTC_ADDRESS = 'bc1qhs02c9l2hpsm8rwnfduk50358u2xsysht2t0ed';
 
 // Fallback BTC/USD reference price
 export const DEFAULT_BTC_PRICE = 68450;

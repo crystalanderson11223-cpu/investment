@@ -23,6 +23,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Settings (e.g. BTC wallet configuration)
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
+
     // Fallback connection test
     match /test/{docId} {
       allow read, write: if true;
