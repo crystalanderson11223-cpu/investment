@@ -6,7 +6,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, getDocs, collection, query, where, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, getDocs, collection, query, where, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 export const ADMIN_EMAIL = 'crystalanderson11223@gmail.com';
@@ -125,25 +125,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Listen to Firebase auth state
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setCurrentUser(user);
+    let isMounted = true;
+
+    async function restoreSession(firebaseUser: User | null) {
+      if (firebaseUser) {
+        if (!isMounted) return;
+        setCurrentUser(firebaseUser);
         try {
-          const prof = await fetchOrCreateProfile(user);
-          setProfile(prof);
-        } catch {
-          // ignore
+          const prof = await fetchOrCreateProfile(firebaseUser);
+          if (isMounted) {
+            setProfile(prof);
+            try {
+              localStorage.setItem('aurum_auth_session_uid', prof.uid);
+            } catch {}
+          }
+        } catch (e) {
+          console.warn('Profile fetch error:', e);
         }
-      } else {
+        if (isMounted) setLoading(false);
+        return;
+      }
+
+      // If firebaseUser is null, check stored session UID (for admin or internal accounts)
+      let storedUid: string | null = null;
+      try {
+        storedUid = localStorage.getItem('aurum_auth_session_uid');
+      } catch {}
+
+      if (storedUid) {
+        try {
+          const snap = await getDoc(doc(db, 'users', storedUid));
+          if (snap.exists() && isMounted) {
+            const data = snap.data() as UserProfile;
+            setCurrentUser({ uid: data.uid, email: data.email });
+            setProfile(data);
+            if (isMounted) setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('Session restore error:', e);
+        }
+      }
+
+      if (isMounted) {
         setCurrentUser(null);
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      await restoreSession(user);
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
+
+  // Real-time Firestore listener for active user profile & balance
+  useEffect(() => {
+    const activeUid = currentUser?.uid;
+    if (!activeUid) return;
+
+    const unsub = onSnapshot(
+      doc(db, 'users', activeUid),
+      (snap) => {
+        if (snap.exists()) {
+          setProfile(snap.data() as UserProfile);
+        }
+      },
+      (err) => {
+        console.warn('Profile realtime sync notice:', err);
+      }
+    );
+
+    return () => unsub();
+  }, [currentUser?.uid]);
 
   const loginWithEmail = async (identifier: string, pass: string) => {
     setError(null);
@@ -207,6 +266,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      try {
+        localStorage.setItem('aurum_auth_session_uid', adminProf.uid);
+      } catch {}
       setCurrentUser(adminProf);
       setProfile(adminProf);
       return;
@@ -248,6 +310,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (pass.length >= 6) {
           try {
             const cred = await signInWithEmailAndPassword(auth, u.email, pass);
+            try {
+              localStorage.setItem('aurum_auth_session_uid', u.uid);
+            } catch {}
             setCurrentUser(cred.user);
             setProfile(u);
             return;
@@ -256,6 +321,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
 
+        try {
+          localStorage.setItem('aurum_auth_session_uid', u.uid);
+        } catch {}
         setCurrentUser({ uid: u.uid, email: u.email });
         setProfile(u);
         return;
@@ -267,6 +335,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Authentication succeeded! Cache password in Firestore for subsequent checks
         try {
           await updateDoc(doc(db, 'users', u.uid), { password: pass });
+        } catch {}
+        try {
+          localStorage.setItem('aurum_auth_session_uid', u.uid);
         } catch {}
         setCurrentUser(cred.user);
         setProfile({ ...u, password: pass });
@@ -283,6 +354,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const cred = await signInWithEmailAndPassword(auth, resolvedEmail, pass);
       const prof = await fetchOrCreateProfile(cred.user, 'user', { password: pass });
+      try {
+        localStorage.setItem('aurum_auth_session_uid', cred.user.uid);
+      } catch {}
       setProfile(prof);
       setCurrentUser(cred.user);
       return;
@@ -384,12 +458,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Save directly to Firestore users collection
     await setDoc(doc(db, 'users', finalUid), newProfile);
 
+    try {
+      localStorage.setItem('aurum_auth_session_uid', finalUid);
+    } catch {}
     setCurrentUser(firebaseUser || { uid: finalUid, email: emailToUse });
     setProfile(newProfile);
   };
 
   const logout = async () => {
     setError(null);
+    try {
+      localStorage.removeItem('aurum_auth_session_uid');
+    } catch {}
     try {
       await signOut(auth);
     } catch {
